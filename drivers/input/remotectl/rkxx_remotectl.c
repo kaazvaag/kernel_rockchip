@@ -24,13 +24,13 @@
 #include <linux/workqueue.h>
 #include <linux/adc.h>
 #include <asm/gpio.h>
-#include <plat/remotectl.h>
+#include <mach/remotectl.h>
 #include <mach/iomux.h>
 #include <linux/wakelock.h>
 #include <linux/suspend.h>
 
 
-#if 0
+#if 1
 #define remotectl_dbg(bdata, format, arg...)		\
 	dev_printk(KERN_INFO , &bdata->input->dev , format , ## arg)
 #else
@@ -62,8 +62,6 @@ struct rkxx_remotectl_drvdata {
 	int result;
     unsigned long pre_time;
     unsigned long cur_time;
-    long int pre_sec;
-    long int cur_sec;
     long period;
     int scanData;
     int count;
@@ -81,7 +79,7 @@ struct rkxx_remotectl_drvdata {
 
 
 
-//���⹦�ܼ�ֵ����
+//ÌØÊâ¹¦ÄÜ¼üÖµ¶¨Òå
     //193      //photo
     //194      //video
     //195      //music
@@ -146,71 +144,11 @@ static struct rkxx_remote_key_table remote_key_table_df[] = {
     {0x40, KEY_SEARCH},     //search
 };
 
-static struct rkxx_remote_key_table remote_key_table_sunchip_202[] = {
-
-   {0x60, KEY_HOME},     // home
-   {0x02, KEY_BACK}, 		// back
-   {0x20, KEY_MENU},			// menu
-   {0xAA, KEY_REPLY},		// ok
-
-    {0x62, KEY_UP},	
-    {0x68, KEY_DOWN},
-    {0xE2, KEY_LEFT},
-    {0xA8, KEY_RIGHT},
-    
-    {0x28, KEY_VOLUMEDOWN},
-    {0x08, KEY_VOLUMEUP},
-    {0x10, KEY_MUTE},       //mute
-    
-    {0x18, KEY_POWER},     //power (RED)
-    {0x40, KEY_POWER},     //power (GREEN)
-    
-    {0x6A, KEY_VOLUMEDOWN},	// function RED
-    {0xEA, KEY_VOLUMEDOWN},	// function GREEN
-    {0xF8, KEY_VOLUMEDOWN},	// function YELLOW
-    {0xDA, KEY_VOLUMEDOWN},	// function BLUE
-    
-    {0x2A, 183},	// Digit 1
-    {0x12, 388},	// Digit 2
-    {0xE0, 184},	// Digit 3
-    {0x0A, 185},	// Digit 4
-    {0x48, KEY_VOLUMEDOWN},	// Digit 5
-    {0x88, 186},	// Digit 6
-    {0x32, KEY_VOLUMEDOWN},	// Digit 7
-    {0x70, KEY_VOLUMEDOWN},	// Digit 8
-    {0xB0, KEY_VOLUMEDOWN},	// Digit 9
-    {0x30, KEY_SEARCH},	// Digit 0
-    
-    {0xD2, KEY_VOLUMEDOWN},	// Delete
-    
-    {0xC0, 183},          	// Signal source
-    {0x28, 184},          	// Volume down (TOP)
-    {0x08, 184},          	// Volume up (TOP)
-    
-    {0xE8, KEY_SEARCH},     // search
-};
-
 extern suspend_state_t get_suspend_state(void);
 
 
 static struct rkxx_remotectl_button remotectl_button[] = 
 {
-    {  
-       .usercode = 0xff,
-       .nbuttons =  22, 
-       .key_table = &remote_key_table_sunchip_202[0],
-    },
-    
-    {  
-       .usercode = 0x206, 
-       .nbuttons =  22, 
-       .key_table = &remote_key_table_meiyu_202[0],
-    },
-    {
-       .usercode = 0x12ee,
-       .nbuttons =  22,
-       .key_table = &remote_key_table_meiyu_202[0],
-    },
     {  
        .usercode = 0x202, 
        .nbuttons =  22, 
@@ -253,21 +191,6 @@ static int remotectl_keycode_lookup(struct rkxx_remotectl_drvdata *ddata)
 }
 
 
-static void remotectl_get_pwr_scanData(struct rkxx_remotectl_drvdata *ddata,int *pwr_data,int loop)
-{	
-    int i;
-    int temp_scanCode;
-    int temp_pwr_data;
-    
-    for (i = 0; i < remotectl_button[loop].nbuttons; i++){
-        if (remotectl_button[loop].key_table[i].keyCode == KEY_POWER){			
-            temp_scanCode = remotectl_button[loop].key_table[i].scanCode;
-            temp_pwr_data = (temp_scanCode<<8)|((~temp_scanCode)&0xFF);
-            //printk("pwr data =0x%x\n",temp_pwr_data);
-        }
-    }
-    *pwr_data = temp_pwr_data;
-}
 
 static void remotectl_do_something(unsigned long  data)
 {
@@ -283,7 +206,6 @@ static void remotectl_do_something(unsigned long  data)
         
         case RMC_PRELOAD:
         {
-            mod_timer(&ddata->timer,jiffies + msecs_to_jiffies(130));
             if ((TIME_PRE_MIN < ddata->period) && (ddata->period < TIME_PRE_MAX)){
                 
                 ddata->scanData = 0;
@@ -307,7 +229,7 @@ static void remotectl_do_something(unsigned long  data)
             }
 
             if (ddata->count == 0x10){//16 bit user code
-                //printk("u=0x%x\n",((ddata->scanData)&0xFFFF));
+               // printk("u=0x%x\n",((ddata->scanData)&0xFFFF));
                 if (remotectl_keybdNum_lookup(ddata)){
                     ddata->state = RMC_GETDATA;
                     ddata->scanData = 0;
@@ -329,22 +251,18 @@ static void remotectl_do_something(unsigned long  data)
                 ddata->scanData |= 0x01;
             }           
             if (ddata->count == 0x10){
-                //printk("RMC_GETDATA=%x\n",(ddata->scanData&0xFFFF));
+               // printk(KERN_ERR "d=%x\n",(ddata->scanData&0xFFFF));
 
                 if ((ddata->scanData&0x0ff) == ((~ddata->scanData >> 8)&0x0ff)){
                     if (remotectl_keycode_lookup(ddata)){
                         ddata->press = 1;
-                        /*
                          if (get_suspend_state()==0){
                                 input_event(ddata->input, EV_KEY, ddata->keycode, 1);
                                 input_sync(ddata->input);
                             }else if ((get_suspend_state())&&(ddata->keycode==KEY_POWER)){
                                 input_event(ddata->input, EV_KEY, KEY_WAKEUP, 1);
                                 input_sync(ddata->input);
-                            }*/
-                            //printk("0\n");
-                            input_event(ddata->input, EV_KEY, ddata->keycode, 1);
-                            input_sync(ddata->input);
+                            }
                         //input_event(ddata->input, EV_KEY, ddata->keycode, ddata->press);
 		                //input_sync(ddata->input);
                         ddata->state = RMC_SEQUENCE;
@@ -360,23 +278,20 @@ static void remotectl_do_something(unsigned long  data)
              
         case RMC_SEQUENCE:{
 
-            //printk( "S=%d\n",ddata->period);
-  
+            //printk( "S\n");
+            
             if ((TIME_RPT_MIN < ddata->period) && (ddata->period < TIME_RPT_MAX)){
-            		 mod_timer(&ddata->timer,jiffies + msecs_to_jiffies(110));
-                 //printk("1\n");;
-            }else if ((TIME_SEQ1_MIN < ddata->period) && (ddata->period < TIME_SEQ1_MAX)){
-	 							  mod_timer(&ddata->timer,jiffies + msecs_to_jiffies(110));
-	 							  //printk("2\n");
-            }else if ((TIME_SEQ2_MIN < ddata->period) && (ddata->period < TIME_SEQ2_MAX)){
-            		  mod_timer(&ddata->timer,jiffies + msecs_to_jiffies(110));
-            		  //printk("3\n");;   
-            }else{
-                	 input_event(ddata->input, EV_KEY, ddata->keycode, 0);
-		               input_sync(ddata->input);
-                	 ddata->state = RMC_PRELOAD;
-                	 ddata->press = 0;
-                	 //printk("4\n");
+                ;
+            }else if ((TIME_SEQ_MIN < ddata->period) && (ddata->period < TIME_SEQ_MAX)){
+	            if (ddata->press == 1){
+                    ddata->press = 3;
+                }else if (ddata->press & 0x2){
+                    ddata->press = 2;
+                //input_event(ddata->input, EV_KEY, ddata->keycode, 2);
+		            //input_sync(ddata->input);
+                }
+                //mod_timer(&ddata->timer,jiffies + msecs_to_jiffies(130));
+                //ddata->state = RMC_PRELOAD;
             }
         }
         break;
@@ -394,56 +309,66 @@ void remotectl_wakeup(unsigned long _data)
     struct rkxx_remotectl_drvdata *ddata =  (struct rkxx_remotectl_drvdata*)_data;
     long *time;
     int i;
-	int power_scanData;
-		 
+
     time = ddata->remotectl_suspend_data.scanTime;
 
     if (get_suspend_state()){
+        
+        static int cnt;
+       
         ddata->remotectl_suspend_data.suspend_flag = 0;
         ddata->count = 0;
         ddata->state = RMC_USERCODE;
         ddata->scanData = 0;
         
         for (i=0;i<ddata->remotectl_suspend_data.cnt;i++){
-        		if (ddata->count>=32)
-        			break;
-
-           if ((TIME_BIT1_MIN < time[i]) && (time[i] < TIME_BIT1_MAX)){
-                ddata->scanData |= 0x01;
-                ddata->scanData <<= 1;
-                ddata->count ++;;
-            }else if ((TIME_BIT0_MIN < time[i]) && (time[i] < TIME_BIT0_MAX)){
-            	  ddata->scanData <<= 1;
-            	  ddata->count ++;;
-            }/*else{
-            	   if (ddata->count>16){
-            	   	  break;
-            	   }else{
-            	   	
-            	   	printk(KERN_ERR "ddata->count=0x%x**********************\n",ddata->count);
-            	   	ddata->count = 0;
-            	   	ddata->scanData = 0;
-            	   }		
-            }*/
+            if (((TIME_BIT1_MIN<time[i])&&(TIME_BIT1_MAX>time[i]))||((TIME_BIT0_MIN<time[i])&&(TIME_BIT0_MAX>time[i]))){
+                cnt = i;
+                break;;
+            }
         }
-        //printk(KERN_ERR"data=0x%x\n",ddata->scanData);
-        if (ddata->scanData)					//(ddata->scanData>16)			
-				{
-					  ddata->scanData=(ddata->scanData>>1)&0xFFFF;				
-					  printk(KERN_ERR"data=0x%x\n",ddata->scanData);
-					  
-					  for (i=0;i<sizeof(remotectl_button)/sizeof(struct rkxx_remotectl_button);i++){
-					  	remotectl_get_pwr_scanData(ddata,&power_scanData,i);
-					  	if ((ddata->scanData == power_scanData)||((ddata->scanData&0x0fff) == (power_scanData&0x0fff))||((ddata->scanData&0x00ff) == (power_scanData&0x00ff)))					//modified by zwm	2013.06.19
-					    {
-					    	input_event(ddata->input, EV_KEY, KEY_WAKEUP, 1);
-            		input_sync(ddata->input);
-            		input_event(ddata->input, EV_KEY, KEY_WAKEUP, 0);
-            		input_sync(ddata->input);
-            		break;
-					    }
-					  }
-				}
+        
+        for (;i<cnt+32;i++){
+            ddata->scanData <<= 1;
+            ddata->count ++;
+
+            if ((TIME_BIT1_MIN < time[i]) && (time[i] < TIME_BIT1_MAX)){
+                ddata->scanData |= 0x01;
+            }
+            
+            if (ddata->count == 0x10){//16 bit user code
+                          
+                if (ddata->state == RMC_USERCODE){
+//                    printk(KERN_ERR "d=%x\n",(ddata->scanData&0xFFFF));  
+                    if (remotectl_keybdNum_lookup(ddata)){
+                        ddata->scanData = 0;
+                        ddata->count = 0;
+                        ddata->state = RMC_GETDATA;
+                    }else{
+                        ddata->state = RMC_PRELOAD;
+                    }
+                }else if (ddata->state == RMC_GETDATA){
+                    if ((ddata->scanData&0x0ff) == ((~ddata->scanData >> 8)&0x0ff)){
+//                        printk(KERN_ERR "d=%x\n",(ddata->scanData&0xFFFF));
+                        if (remotectl_keycode_lookup(ddata)){
+                             if (ddata->keycode==KEY_POWER){
+                                input_event(ddata->input, EV_KEY, KEY_WAKEUP, 1);
+                                input_sync(ddata->input);
+                                input_event(ddata->input, EV_KEY, KEY_WAKEUP, 0);
+                                input_sync(ddata->input);
+                            }
+                            ddata->state = RMC_PRELOAD;
+                        }else{
+                            ddata->state = RMC_PRELOAD;
+                        }
+                    }else{
+                        ddata->state = RMC_PRELOAD;
+                    }
+                }else{
+                    ddata->state = RMC_PRELOAD;
+                }
+            }
+        }
     }
     memset(ddata->remotectl_suspend_data.scanTime,0,50*sizeof(long));
     ddata->remotectl_suspend_data.cnt= 0; 
@@ -462,21 +387,18 @@ static void remotectl_timer(unsigned long _data)
     
     if(ddata->press != ddata->pre_press) {
         ddata->pre_press = ddata->press = 0;
-        
-				input_event(ddata->input, EV_KEY, ddata->keycode, 0);
-        input_sync(ddata->input);
-        //printk("5\n");
-        //if (get_suspend_state()==0){
+
+        if (get_suspend_state()==0){
             //input_event(ddata->input, EV_KEY, ddata->keycode, 1);
             //input_sync(ddata->input);
-            //input_event(ddata->input, EV_KEY, ddata->keycode, 0);
-		    //input_sync(ddata->input);
-        //}else if ((get_suspend_state())&&(ddata->keycode==KEY_POWER)){
+            input_event(ddata->input, EV_KEY, ddata->keycode, 0);
+		    input_sync(ddata->input);
+        }else if ((get_suspend_state())&&(ddata->keycode==KEY_POWER)){
             //input_event(ddata->input, EV_KEY, KEY_WAKEUP, 1);
             //input_sync(ddata->input);
-            //input_event(ddata->input, EV_KEY, KEY_WAKEUP, 0);
-            //input_sync(ddata->input);
-        //}
+            input_event(ddata->input, EV_KEY, KEY_WAKEUP, 0);
+            input_sync(ddata->input);
+        }
     }
 #ifdef CONFIG_PM
     remotectl_wakeup(_data);
@@ -493,24 +415,18 @@ static irqreturn_t remotectl_isr(int irq, void *dev_id)
 
 
     ddata->pre_time = ddata->cur_time;
-    ddata->pre_sec = ddata->cur_sec;
     do_gettimeofday(&ts);
     ddata->cur_time = ts.tv_usec;
-    ddata->cur_sec = ts.tv_sec;
-    
-		if (likely(ddata->cur_sec == ddata->pre_sec)){
-			ddata->period =  ddata->cur_time - ddata->pre_time;
-	  }else{
-				ddata->period =  1000000 - ddata->pre_time + ddata->cur_time;
-		}
+
+    if (ddata->cur_time && ddata->pre_time)
+        ddata->period =  ddata->cur_time - ddata->pre_time;
 
     tasklet_hi_schedule(&ddata->remote_tasklet); 
-    //if ((ddata->state==RMC_PRELOAD)||(ddata->state==RMC_SEQUENCE))
-    //mod_timer(&ddata->timer,jiffies + msecs_to_jiffies(130));
+    if ((ddata->state==RMC_PRELOAD)||(ddata->state==RMC_SEQUENCE))
+    mod_timer(&ddata->timer,jiffies + msecs_to_jiffies(130));
 #ifdef CONFIG_PM
-   if (ddata->state==RMC_PRELOAD)
-       wake_lock_timeout(&ddata->remotectl_wake_lock, HZ);
-   if ((get_suspend_state())&&(ddata->remotectl_suspend_data.cnt<50))		//zwm
+    //wake_lock_timeout(&ddata->remotectl_wake_lock, HZ);
+   if ((get_suspend_state())&&(ddata->remotectl_suspend_data.cnt<50))
        ddata->remotectl_suspend_data.scanTime[ddata->remotectl_suspend_data.cnt++] = ddata->period;
 #endif
 
@@ -712,13 +628,8 @@ static struct platform_driver remotectl_device_driver = {
 
 static int  remotectl_init(void)
 {
-	printk("===================================================\n");
-	printk("Rockchip IR remote controller driver. Version 1.0.0\n");
-	printk("===================================================\n");
-	
-	printk(KERN_INFO "++++++++remotectl_init\n");
-	
-	return platform_driver_register(&remotectl_device_driver);
+    printk(KERN_INFO "++++++++remotectl_init\n");
+    return platform_driver_register(&remotectl_device_driver);
 }
 
 
@@ -735,5 +646,3 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("rockchip");
 MODULE_DESCRIPTION("Keyboard driver for CPU GPIOs");
 MODULE_ALIAS("platform:gpio-keys1");
-
-
